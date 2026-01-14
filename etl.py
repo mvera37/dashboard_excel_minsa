@@ -1,236 +1,208 @@
-# ================================================================
-#          ETL FINAL - SINCRONIZACIÓN TOTAL DE UBIGEO (6 DIGITOS)
-# ================================================================
+# ==============================================================================
+# ETL MINSA - v11.0 (CORRECCIÓN GEOGRÁFICA QUILLABAMBA)
+# ==============================================================================
 import pandas as pd
-from sqlalchemy import create_engine, text, inspect
+from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 import os
 
-# CONFIGURACIÓN
-EXCEL_PATH = r"D:\MINSA\Proyecto Mónica\Analisis - copia\Reporte_SIA_TELEATIENDO_0212025.xlsx"
-TABLE_FACT = "mamografias_teleatiendo"
-TABLE_DIM_UBIGEO = "dim_ubigeo"
-TABLE_DIM_NACIONALIDAD = "dim_nacionalidad"
-TABLE_DIM_ETNIA = "dim_etnia"
+# --- CONFIGURACIÓN ---
+EXCEL_MAIN =  r"D:\MINSA\Proyecto Mónica\Analisis - copia\Reporte_SIA_TELEATIENDO_13012026.xlsx"
+EXCEL_EESS = "EESS.xlsx"
+TABLE_DESTINO = "vista_master_dashboard"
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
 
-# ================================================================
-# 1. CARGA DE DIMENSIONES (CON RELLENO DE CEROS)
-# ================================================================
-def cargar_dimensiones(engine):
-    print("\n=== 1. CARGANDO DIMENSIONES ===")
+def normalize_text(series):
+    return series.astype(str).str.upper().str.strip()
+
+# ---------------------------------------------------------
+# 1. CARGA DE MAESTROS
+# ---------------------------------------------------------
+def cargar_maestros():
+    print("\n=== 1. CARGANDO MAESTROS ===")
+    maestros = {}
+
+    # A. EESS
+    file_eess = EXCEL_EESS if os.path.exists(EXCEL_EESS) else ("EESS.xlsx" if os.path.exists("EESS.xlsx") else None)
+    if file_eess:
+        try:
+            df = pd.read_excel(file_eess, usecols=["Nombre del establecimiento", "Departamento", "Provincia", "Distrito"])
+            df.columns = ["nombre_eess", "geo_departamento", "geo_provincia", "geo_distrito"]
+            df["key_eess"] = normalize_text(df["nombre_eess"])
+            # NOTA: Aquí es donde se eliminaban duplicados y ganaba Apurímac. 
+            # No cambiamos esto para no romper otros cruces, corregiremos abajo.
+            maestros['eess'] = df.drop_duplicates(subset=["key_eess"])
+            print(f"✔ EESS cargado: {len(maestros['eess'])} registros.")
+        except Exception as e: print(f"❌ Error EESS: {e}")
+    else: print("❌ Falta archivo EESS")
+
+    # B. NACIONALIDAD
+    if os.path.exists("Nacionalidad.xlsx"):
+        try:
+            df = pd.read_excel("Nacionalidad.xlsx", dtype=str)
+            df = df.iloc[:, [0, 1]] 
+            df.columns = ["cod_nac", "pais"]
+            df["cod_nac"] = df["cod_nac"].str.split('.').str[0].str.strip()
+            maestros['nacionalidad'] = df
+            print(f"✔ Nacionalidad cargada: {len(df)} registros.")
+        except: pass
+
+    # C. ETNIA
+    if os.path.exists("Etnia.xlsx"):
+        try:
+            df = pd.read_excel("Etnia.xlsx", dtype=str)
+            df = df.iloc[:, [0, 1]]
+            df.columns = ["cod_etnia", "raza"]
+            df["cod_etnia"] = df["cod_etnia"].str.split('.').str[0].str.strip()
+            maestros['etnia'] = df
+            print(f"✔ Etnia cargada: {len(df)} registros.")
+        except: pass
+
+    return maestros
+
+# ---------------------------------------------------------
+# 2. PROCESAMIENTO
+# ---------------------------------------------------------
+def procesar_principal(maestros):
+    print(f"\n=== 2. PROCESANDO REPORTE PRINCIPAL ===")
     try:
-        # UBIGEO
-        if os.path.exists("UBIGEO.xlsx"):
-            df_u = pd.read_excel("UBIGEO.xlsx")
-            # Nombres estándar internos (minúsculas)
-            df_u.columns = ["iddist", "nombdep", "nombprov", "nombdist", "capital_legal", "cod_reg_nat", "region_natural"]
-            
-            # --- CORRECCIÓN CLAVE ---
-            # 1. Convertir a Texto
-            # 2. Quitar decimales (.0)
-            # 3. Rellenar con ceros a la izquierda hasta llegar a 6 dígitos (zfill)
-            df_u["iddist"] = df_u["iddist"].astype(str).str.split('.').str[0].str.strip().str.zfill(6)
-            
-            df_u.to_sql(TABLE_DIM_UBIGEO, engine, if_exists="replace", index=False)
-            print(f"✔ Dimensión Ubigeo normalizada a 6 dígitos. Ejemplo: '{df_u['iddist'].iloc[0]}'")
-
-        # NACIONALIDAD
-        if os.path.exists("Nacionalidad.xlsx"):
-            df_n = pd.read_excel("Nacionalidad.xlsx")
-            df_n.columns = ["codigo_nacionalidad", "pais"]
-            df_n.to_sql(TABLE_DIM_NACIONALIDAD, engine, if_exists="replace", index=False)
-
-        # ETNIA
-        if os.path.exists("Etnia.xlsx"):
-            df_e = pd.read_excel("Etnia.xlsx")
-            df_e.columns = ["codigo_etnia", "raza"]
-            df_e.to_sql(TABLE_DIM_ETNIA, engine, if_exists="replace", index=False)
-
-    except Exception as e:
-        print(f"⚠️ Error cargando dimensiones: {e}")
-
-# ================================================================
-# 2. PROCESAMIENTO EXCEL
-# ================================================================
-def procesar_excel(df):
-    print(f"\n=== 2. PROCESANDO EXCEL ({len(df)} filas) ===")
-    
-    # Normalizar cabeceras
-    df.columns = [str(c).lower().strip() for c in df.columns]
-    
-    # FILTRO SERVICIO
-    if "servicio" in df.columns:
-        df = df[df["servicio"].astype(str).str.lower().str.contains("mamo", na=False)].copy()
-
-    # FECHAS
-    cols_fechas = ["fecha registro consultor", "fecha solicitud", "fecha nacimiento"]
-    for col in cols_fechas:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], dayfirst=True, errors='coerce')
-
-    # --- PREPARACIÓN UBIGEO (REGLA DE 6 DÍGITOS) ---
-    if "distrito" in df.columns:
-        # Limpieza base
-        clean_dist = df["distrito"].astype(str).str.split('.').str[0].str.strip()
-        # Aplicamos la misma regla que a la dimensión: Rellenar con ceros (20101 -> 020101)
-        df["distrito_6dig"] = clean_dist.str.zfill(6)
+        df = pd.read_excel(EXCEL_MAIN)
+        if "Unnamed: 0" in str(df.columns[0]): df = pd.read_excel(EXCEL_MAIN, header=2)
         
-        print(f"   > Ejemplo conversión: Original '{df['distrito'].iloc[0]}' -> Normalizado '{df['distrito_6dig'].iloc[0]}'")
+        df.columns = [str(c).lower().strip().replace('.', '').replace('_', ' ') for c in df.columns]
 
-    # BI-RADS
-    if "bi rads" in df.columns:
-        temp = df["bi rads"].astype(str).str.replace(" ", "")
-        df["birads_categoria"] = temp.map({
-            '0': "0 – Incompleto", '1': "1 – Negativo", '2': "2 – Benigno",
-            '3': "3 – Probablemente benigno", '4': "4 – Sospechoso", '5': "5 – Alta sospecha",
-            '0.0': "0 – Incompleto", '1.0': "1 – Negativo", '2.0': "2 – Benigno",
-            '3.0': "3 – Probablemente benigno", '4.0': "4 – Sospechoso", '5.0': "5 – Alta sospecha"
-        })
-        df["es_anormalidad"] = temp.apply(lambda x: 1 if x in ['3', '4', '5', '3.0', '4.0', '5.0'] else 0)
-        df["bi rads"] = pd.to_numeric(df["bi rads"], errors='coerce')
+        # Borrar geo vieja
+        cols_borrar = ['departamento', 'provincia', 'distrito', 'ubigeo']
+        df.drop(columns=[c for c in cols_borrar if c in df.columns], inplace=True, errors='ignore')
 
-    # CÁLCULOS VARIOS
-    hoy = pd.Timestamp.today()
-    if "fecha nacimiento" in df.columns:
-        df["edad"] = ((hoy - df["fecha nacimiento"]).dt.days / 365.25).fillna(0).astype(int)
-        df.loc[df["edad"] < 0, "edad"] = 0
+        # Mapeo de columnas
+        col_map = {}
+        for c in df.columns:
+            if "servicio" in c and "id" not in c: col_map[c] = "servicio_texto"
+            elif "fecha solicitud" in c: col_map[c] = "fecha_solicitud"
+            elif "fecha registro consultor" in c: col_map[c] = "fecha_registro_consultor"
+            elif "fecha nacimiento" in c: col_map[c] = "fecha_nacimiento"
+            elif "fuat anio" in c: col_map[c] = "anio_fuat"
+            elif "bi rads" in c: col_map[c] = "birads_raw"
+            elif "estado" in c: col_map[c] = "estado"
+            elif "sexo" in c: col_map[c] = "sexo"
+            elif "nacionalidad id" in c: col_map[c] = "nac_id"
+            elif "etnia id" in c: col_map[c] = "etnia_id"
+        
+        df.rename(columns=col_map, inplace=True)
 
-    if "fecha registro consultor" in df.columns and "fecha solicitud" in df.columns:
-        df["tiempo_atencion_dias"] = (df["fecha registro consultor"] - df["fecha solicitud"]).dt.total_seconds() / 86400.0
+        # Lógica Servicio
+        if "servicio_texto" in df.columns:
+            df['tipo_servicio'] = df["servicio_texto"].apply(lambda x: "MAMOGRAFIA" if "mamo" in str(x).lower() else "RADIOLOGIA")
+        else: df['tipo_servicio'] = "DESCONOCIDO"
 
-    if "sexo" in df.columns:
-        df["sexo"] = df["sexo"].replace({1: "MASCULINO", 2: "FEMENINO", "1": "MASCULINO", "2": "FEMENINO"})
-    
-    if "estado" in df.columns:
-        df["estado_atencion_normalizado"] = df["estado"].astype(str).str.lower().str.strip()
-    
-    if "fecha solicitud" in df.columns:
-        df["anio_mes"] = df["fecha solicitud"].dt.to_period("M").astype(str)
-        df["anio"] = df["fecha solicitud"].dt.year
-        df["mes"] = df["fecha solicitud"].dt.month
-
-    if "sexo" in df.columns and "edad" in df.columns:
-        df["es_mujer_40_69"] = ((df["sexo"] == "FEMENINO") & (df["edad"].between(40, 69))).astype(int)
-
-    return df
-
-# ================================================================
-# 3. REALIZAR JOINS
-# ================================================================
-def hacer_joins(df, engine):
-    print("\n=== 3. REALIZANDO JOINS ===")
-    
-    # UBIGEO
-    if "distrito_6dig" in df.columns:
-        try:
-            u = pd.read_sql(f"SELECT * FROM {TABLE_DIM_UBIGEO}", engine)
-            u.columns = [c.lower() for c in u.columns]
+        # Fechas y Año
+        for d in ["fecha_solicitud", "fecha_registro_consultor", "fecha_nacimiento"]:
+            if d in df.columns: df[d] = pd.to_datetime(df[d], dayfirst=True, errors='coerce')
             
-            # Buscamos la columna ID y aplicamos LA MISMA REGLA DE 6 DÍGITOS
-            col_id = "iddist" if "iddist" in u.columns else "id_dist"
-            u[col_id] = u[col_id].astype(str).str.split('.').str[0].str.strip().str.zfill(6)
+        df["anio"] = pd.to_numeric(df.get("anio_fuat", 0), errors='coerce').fillna(0).astype(int)
+        mask_cero = df["anio"] == 0
+        if mask_cero.any() and "fecha_solicitud" in df.columns:
+             df.loc[mask_cero, "anio"] = df.loc[mask_cero, "fecha_solicitud"].dt.year.fillna(0).astype(int)
+
+        if "fecha_registro_consultor" in df.columns and "fecha_solicitud" in df.columns:
+             df["tiempo_atencion_dias"] = (df["fecha_registro_consultor"] - df["fecha_solicitud"]).dt.total_seconds() / 86400.0
+
+        # === CRUCE GEOGRÁFICO ===
+        col_origen = next((c for c in df.columns if "nombre" in c and "establecimiento" in c and "origen" in c), None)
+        if col_origen and 'eess' in maestros:
+            print("   > Cruzando EESS...")
+            df.rename(columns={col_origen: "nombre_eess_origen"}, inplace=True)
+            df["key_join"] = normalize_text(df["nombre_eess_origen"])
             
-            # MERGE
-            df = df.merge(u, left_on="distrito_6dig", right_on=col_id, how="left")
-            
-            # Verificación
-            cruzados = df['nombdep'].notna().sum()
-            print(f"   > Match Ubigeo: {cruzados} filas de {len(df)}")
-            
-            # Llenado de columnas
-            if "nombdep" in df.columns:
-                df["nombdep"] = df["nombdep"].fillna("DESCONOCIDO")
-                df["nombprov"] = df["nombprov"].fillna("DESCONOCIDO")
-                df["departamento"] = df["nombdep"]
-                df["provincia"] = df["nombprov"]
+            # Merge inicial (aquí es donde Quillabamba se va a Apurimac erróneamente)
+            df = df.merge(maestros['eess'], left_on="key_join", right_on="key_eess", how="left")
+            df.rename(columns={"geo_departamento": "departamento", "geo_provincia": "provincia", "geo_distrito": "distrito_nombre"}, inplace=True)
+            df["departamento"] = df["departamento"].fillna("DESCONOCIDO")
 
-        except Exception as e:
-            print(f"   ❌ Falló Merge Ubigeo: {e}")
+            # --- 🔥 CORRECCIÓN MANUAL DE GEOGRAFÍA 🔥 ---
+            # Buscamos todo lo que diga QUILLABAMBA y lo forzamos a CUSCO
+            mask_quilla = df['nombre_eess_origen'].astype(str).str.upper().str.contains("QUILLABAMBA", na=False)
+            count_q = mask_quilla.sum()
+            if count_q > 0:
+                print(f"   ⚠️ CORRIGIENDO: Se movieron {count_q} registros de 'QUILLABAMBA' a CUSCO.")
+                df.loc[mask_quilla, 'departamento'] = 'CUSCO'
+                df.loc[mask_quilla, 'provincia'] = 'LA CONVENCION' # Asignamos también su provincia correcta
+            # ------------------------------------------------
 
-    # JOINS NACIONALIDAD / ETNIA
-    if "nacionalidad id" in df.columns:
-        try:
-            n = pd.read_sql(f"SELECT * FROM {TABLE_DIM_NACIONALIDAD}", engine)
-            df["nacionalidad id"] = pd.to_numeric(df["nacionalidad id"], errors='coerce')
-            n.columns = [c.lower() for c in n.columns]
-            if "codigo_nacionalidad" in n.columns:
-                n["codigo_nacionalidad"] = pd.to_numeric(n["codigo_nacionalidad"], errors='coerce')
-                df = df.merge(n, left_on="nacionalidad id", right_on="codigo_nacionalidad", how="left")
-        except: pass
+        # Cruces Nacio/Etnia
+        if "nac_id" in df.columns and 'nacionalidad' in maestros:
+            df["nac_join"] = df["nac_id"].fillna(0).astype(str).str.split('.').str[0].str.strip()
+            df = df.merge(maestros['nacionalidad'], left_on="nac_join", right_on="cod_nac", how="left")
+            df.rename(columns={"pais": "nacionalidad"}, inplace=True)
+            df["nacionalidad"] = df["nacionalidad"].fillna("DESCONOCIDO")
 
-    if "etnia id" in df.columns:
-        try:
-            e = pd.read_sql(f"SELECT * FROM {TABLE_DIM_ETNIA}", engine)
-            df["etnia id"] = pd.to_numeric(df["etnia id"], errors='coerce')
-            e.columns = [c.lower() for c in e.columns]
-            if "codigo_etnia" in e.columns:
-                e["codigo_etnia"] = pd.to_numeric(e["codigo_etnia"], errors='coerce')
-                df = df.merge(e, left_on="etnia id", right_on="codigo_etnia", how="left")
-        except: pass
+        if "etnia_id" in df.columns and 'etnia' in maestros:
+            df["etn_join"] = df["etnia_id"].fillna(0).astype(str).str.split('.').str[0].str.strip()
+            df = df.merge(maestros['etnia'], left_on="etn_join", right_on="cod_etnia", how="left")
+            df.rename(columns={"raza": "etnia"}, inplace=True)
+            df["etnia"] = df["etnia"].fillna("DESCONOCIDO")
 
-    return df
+        # Indicadores finales
+        if "estado" in df.columns:
+            df["es_atendido"] = df["estado"].astype(str).str.upper().apply(lambda x: 1 if "ATENDIDO" in x else 0)
+            df["es_anulado"] = df["estado"].astype(str).str.upper().apply(lambda x: 1 if "ANULADO" in x else 0)
 
-# ================================================================
-# MAIN (SINCRONIZACIÓN AUTOMÁTICA DE NOMBRES)
-# ================================================================
+        if "birads_raw" in df.columns:
+             df["es_anormal"] = df.apply(lambda r: 1 if (r.get("tipo_servicio")=="MAMOGRAFIA" and str(r.get("birads_raw")).replace('.0','') in ['3','4','5']) else 0, axis=1)
+
+        # Edad
+        hoy = pd.Timestamp.today()
+        if "fecha_nacimiento" in df.columns:
+            df["edad"] = ((hoy - df["fecha_nacimiento"]).dt.days / 365.25).fillna(0).astype(int)
+            def calc_grupo(edad):
+                if edad <= 11: return "Niño (0-11)"
+                elif edad <= 17: return "Adolescente (12-17)"
+                elif edad <= 29: return "Joven (18-29)"
+                elif edad <= 59: return "Adulto (30-59)"
+                else: return "Adulto Mayor (60+)"
+            df["grupo_etario"] = df["edad"].apply(calc_grupo)
+
+        return df
+
+    except Exception as e: print(f"❌ Error procesando: {e}"); return pd.DataFrame()
+
+# 3. SUBIDA
 def main():
-    print(f"Leyendo: {os.path.basename(EXCEL_PATH)}")
-    try:
-        df = pd.read_excel(EXCEL_PATH)
-        if "Unnamed: 0" in str(df.columns): df = pd.read_excel(EXCEL_PATH, header=2)
-    except Exception as e:
-        print(f"❌ Error leyendo Excel: {e}")
-        return
+    print("=== 🚀 INICIANDO ETL v11.0 (FIX CUSCO) ===")
+    if not DB_URL: print("❌ Falta DATABASE_URL"); return
+    try: engine = create_engine(DB_URL)
+    except: print("❌ Error conexión"); return
+
+    maestros = cargar_maestros()
+    df_final = procesar_principal(maestros)
+    
+    if df_final.empty: return
+
+    # Selección final
+    cols_keep = [
+        'anio', 'fecha_solicitud', 'tipo_servicio', 'estado', 
+        'es_atendido', 'es_anulado', 'es_anormal', 'birads_raw',
+        'tiempo_atencion_dias', 'edad', 'sexo', 'grupo_etario',
+        'departamento', 'provincia', 'distrito_nombre', 'nombre_eess_origen',
+        'nacionalidad', 'etnia'
+    ]
+    final_cols = [c for c in cols_keep if c in df_final.columns]
+    df_subida = df_final[final_cols].copy()
+
+    print(f"\n=== 3. SUBIENDO A NEON ({len(df_subida)} filas) ===")
+    with engine.connect() as conn:
+        try: conn.execute(text(f"DROP VIEW IF EXISTS {TABLE_DESTINO} CASCADE")); conn.commit()
+        except: pass
+        try: conn.execute(text(f"DROP TABLE IF EXISTS {TABLE_DESTINO} CASCADE")); conn.commit()
+        except: pass
 
     try:
-        engine = create_engine(DB_URL)
-        # 1. Cargamos dimensiones (asegurando 6 dígitos)
-        cargar_dimensiones(engine)
-        
-        # 2. Procesamos Excel (asegurando 6 dígitos) y unimos
-        df = procesar_excel(df)
-        df = hacer_joins(df, engine)
-        
-    except Exception as e:
-        print(f"❌ Error procesando: {e}")
-        return
-
-    # 4. SUBIDA FINAL
-    try:
-        insp = inspect(engine)
-        cols_reales_bd = [c['name'] for c in insp.get_columns(TABLE_FACT)]
-        
-        # Sincronizador de nombres (Mapeo minúscula -> Nombre Real BD)
-        mapa_nombres = {c.lower(): c for c in cols_reales_bd}
-        df.rename(columns=mapa_nombres, inplace=True)
-        
-        cols_finales = [c for c in df.columns if c in cols_reales_bd]
-        df_final = df[cols_finales].copy()
-        
-        # Revertir distrito a numérico para guardado (opcional, pero buena práctica si BD es bigint)
-        # Nota: Si el zfill agregó ceros '020101', al pasarlo a int será 20101.
-        # Si la BD espera el número 20101, esto es correcto.
-        if "distrito" in df_final.columns:
-             df_final["distrito"] = pd.to_numeric(df_final["distrito"], errors='coerce').fillna(0).astype('int64')
-
-        print(f"\n=== 4. ACTUALIZANDO BD ({len(df_final)} registros) ===")
-        print(f"   > Columnas detectadas para subir: {len(cols_finales)}")
-        
-        if len(df_final) > 0:
-            with engine.connect() as conn:
-                conn.execute(text(f"TRUNCATE TABLE {TABLE_FACT}"))
-                conn.commit()
-            
-            df_final.to_sql(TABLE_FACT, engine, if_exists="append", index=False)
-            print("✅ ¡CARGA EXITOSA!")
-        else:
-            print("⚠️ Tabla vacía.")
-            
-    except Exception as e:
-        print(f"❌ Error subiendo a BD: {e}")
+        df_subida.to_sql(TABLE_DESTINO, engine, if_exists='replace', index=False)
+        print("✅ ¡CARGA EXITOSA!")
+    except Exception as e: print(f"❌ Error DB: {e}")
 
 if __name__ == "__main__":
     main()
