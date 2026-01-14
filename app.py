@@ -10,9 +10,9 @@ import datetime
 
 # --- CONFIGURACIÓN ---
 warnings.filterwarnings("ignore")
-st.set_page_config(page_title="TeleMammo BI v10.0", page_icon="💙", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TeleMammo BI v11.1", page_icon="💙", layout="wide", initial_sidebar_state="collapsed")
 
-# --- ESTILOS CSS (DISEÑO PREMIUM) ---
+# --- ESTILOS CSS ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -27,7 +27,7 @@ st.markdown("""
         border: 1px solid #E2E8F0; 
     }
     
-    /* 2. HERO SECTION (HOME) */
+    /* 2. HERO SECTION */
     .hero-badge {
         background-color: #DBEAFE; color: #1E40AF; padding: 6px 16px; 
         border-radius: 20px; font-weight: 700; font-size: 0.75rem; 
@@ -40,23 +40,17 @@ st.markdown("""
     .hero-desc {
         font-size: 1.1rem; color: #475569; line-height: 1.6; margin-bottom: 2rem; max-width: 95%;
     }
-    
-    /* FOOTER DE DATOS DEL HOME */
     .hero-stats-container {
         display: flex; flex-wrap: wrap; gap: 20px; align-items: center;
         margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #E2E8F0;
     }
-    .stat-item { 
-        display: flex; align-items: center; gap: 8px; 
-        color: #64748B; font-weight: 600; font-size: 0.95rem; 
-    }
+    .stat-item { display: flex; align-items: center; gap: 8px; color: #64748B; font-weight: 600; font-size: 0.95rem; }
     .update-badge {
-        background-color: #EFF6FF; color: #2563EB; 
-        padding: 4px 12px; border-radius: 6px; 
+        background-color: #EFF6FF; color: #2563EB; padding: 4px 12px; border-radius: 6px; 
         font-size: 0.85rem; font-weight: 700; border: 1px solid #BFDBFE;
     }
 
-    /* 3. TARJETAS KPI (DASHBOARD) */
+    /* 3. KPI CARDS */
     .kpi-card {
         background-color: white; border-radius: 12px; padding: 20px 24px;
         border: 1px solid #E2E8F0; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
@@ -66,7 +60,7 @@ st.markdown("""
     .kpi-lbl { font-size: 0.7rem; color: #64748B; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
     .kpi-sub { font-size: 0.8rem; font-weight: 500; color: #94A3B8; }
 
-    /* 4. TARJETAS GRÁFICOS */
+    /* 4. CHART CARDS */
     [data-testid="stVerticalBlockBorderWrapper"] {
         background-color: white; border-radius: 16px !important;
         border: 1px solid #E2E8F0 !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
@@ -170,116 +164,93 @@ def mostrar_kpis_completos(df_input):
         dep = df_input['departamento'].nunique() if 'departamento' in df_input.columns else 0
     else: intensidad=tasa=prom=atend=anul=tiempo=dep=0
 
+    # --- CORRECCIÓN DE SINTAXIS AQUÍ ---
     r1 = st.columns(4)
     datos_r1 = [(f"{total:,.0f}", "Solicitudes", "Total"), (f"{intensidad:.1f}%", "Intensidad", "40-69 años"), (f"{tasa:.1f}%", "Anormalidad", "BIRADS 3-5"), (f"{prom:.0f}", "Promedio Diario", "Atenciones")]
     for col, (val, tit, sub) in zip(r1, datos_r1):
-        with col: st.markdown(kpi_html(val, tit, sub), unsafe_allow_html=True)
+        with col:
+            st.markdown(kpi_html(val, tit, sub), unsafe_allow_html=True)
 
     r2 = st.columns(4)
     datos_r2 = [(f"{atend:.1f}%", "% Atendidas", "Efectividad"), (f"{anul:.1f}%", "% Anuladas", "Calidad Operativa"), (f"{tiempo:.1f} d", "Tiempo Promedio", "Desde solicitud"), (f"{dep}", "Deptos Activos", "Cobertura Nacional")]
     for col, (val, tit, sub) in zip(r2, datos_r2):
-        with col: st.markdown(kpi_html(val, tit, sub), unsafe_allow_html=True)
+        with col:
+            st.markdown(kpi_html(val, tit, sub), unsafe_allow_html=True)
+    
     st.write("")
+    # ----------------------------------
 
-# --- VISTA 1: HOME (MEJORADO CON FECHA) ---
+# --- CONTROLADOR GLOBAL DE FILTROS ---
+def render_sidebar_filters(df_data):
+    with st.sidebar:
+        st.header("Filtros Globales")
+        
+        opts_srv = ["TODOS"] + sorted(df_data['tipo_servicio'].unique()) if 'tipo_servicio' in df_data.columns else ["TODOS"]
+        sel_srv = st.selectbox("Especialidad", opts_srv, index=opts_srv.index("MAMOGRAFIA") if "MAMOGRAFIA" in opts_srv else 0)
+        
+        df_f = df_data.copy() if sel_srv == "TODOS" else df_data[df_data['tipo_servicio'] == sel_srv].copy()
+        
+        if 'anio' in df_f.columns:
+            years = sorted(df_f['anio'].unique(), reverse=True)
+            sel_year = st.selectbox("Año Fiscal", years)
+            df_f = df_f[df_f['anio'] == sel_year]
+
+        if 'nombre_mes' in df_f.columns:
+            meses_orden = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+            df_f['nombre_mes'] = pd.Categorical(df_f['nombre_mes'], categories=meses_orden, ordered=True)
+            opts_mes = ["Todos"] + list(df_f['nombre_mes'].sort_values().unique())
+            sel_mes = st.selectbox("Mes", opts_mes)
+            if sel_mes != "Todos": df_f = df_f[df_f['nombre_mes'] == sel_mes]
+
+        st.markdown("---")
+        if st.button("🏠 Volver al Inicio"): st.session_state["app_state"] = "HOME"; st.rerun()
+        
+        return df_f, sel_srv
+
+# --- VISTA 1: HOME ---
 def render_home():
-    # Navbar
-    st.markdown("""
-    <div class="navbar">
-        <div style="font-weight:800; font-size:1.4rem; color:#0F172A; display:flex; align-items:center; gap:10px;">
-            <span>💙</span> TeleMammo <small style="color:#64748B; margin-left:8px; font-weight:500;">MINSA BI</small>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("""<div class="navbar"><div style="font-weight:800; font-size:1.4rem; color:#0F172A; display:flex; align-items:center; gap:10px;"><span>💙</span> TeleMammo <small style="color:#64748B; margin-left:8px; font-weight:500;">MINSA BI</small></div></div>""", unsafe_allow_html=True)
 
-    # CÁLCULOS EN TIEMPO REAL PARA EL HOME
     total_home = len(df_master)
     dias_home = df_master['tiempo_atencion_dias'].mean() if 'tiempo_atencion_dias' in df_master.columns else 0
     
-    # CÁLCULO DE FECHA DE ACTUALIZACIÓN
     if 'fecha_solicitud' in df_master.columns:
         fecha_max = df_master['fecha_solicitud'].max()
         texto_fecha = fecha_max.strftime("%d/%m/%Y") if pd.notnull(fecha_max) else "Sin Data"
-    else:
-        texto_fecha = "N/A"
+    else: texto_fecha = "N/A"
 
     c1, c2 = st.columns([1.2, 1], gap="large")
-    
     with c1:
         st.write("") 
         st.markdown('<div class="hero-badge">Dirección de Telemedicina - DITEL</div>', unsafe_allow_html=True)
         st.markdown('<div class="hero-title">Transformando el Diagnóstico: <span style="color:#2563EB">Telemamografía</span></div>', unsafe_allow_html=True)
-        
-        st.markdown("""
-        <div class="hero-desc">
-            Modernizando la detección temprana del cáncer de mama en Perú con tecnología digital avanzada. 
-            Monitoreo en tiempo real de cobertura, tiempos de atención y hallazgos clínicos (BIRADS).
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("""<div class="hero-desc">Modernizando la detección temprana del cáncer de mama en Perú con tecnología digital avanzada. Monitoreo en tiempo real de cobertura, tiempos de atención y hallazgos clínicos (BIRADS).</div>""", unsafe_allow_html=True)
         
         if st.button("🚀 Acceder al Dashboard Ejecutivo", type="primary"):
-            st.session_state["app_state"] = "DASHBOARD"
-            st.rerun()
+            st.session_state["app_state"] = "DASHBOARD"; st.rerun()
 
-        # FOOTER DE ESTADÍSTICAS + FECHA ACTUALIZACIÓN
         st.markdown(f"""
         <div class="hero-stats-container">
-            <div class="stat-item">
-                <span style="font-size:1.2rem">📄</span> 
-                <span><strong>{total_home:,.0f}</strong> Atenciones</span>
-            </div>
-            <div class="stat-item">
-                <span style="font-size:1.2rem">⚡</span> 
-                <span><strong>{dias_home:.1f}</strong> Días prom</span>
-            </div>
-            <div class="stat-item">
-                <span style="font-size:1.2rem">🛡️</span> Datos Seguros
-            </div>
-            <div class="stat-item update-badge">
-                📅 Actualizado al: {texto_fecha}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+            <div class="stat-item"><span style="font-size:1.2rem">📄</span> <span><strong>{total_home:,.0f}</strong> Atenciones</span></div>
+            <div class="stat-item"><span style="font-size:1.2rem">⚡</span> <span><strong>{dias_home:.1f}</strong> Días prom</span></div>
+            <div class="stat-item"><span style="font-size:1.2rem">🛡️</span> Datos Seguros</div>
+            <div class="stat-item update-badge">📅 Actualizado al: {texto_fecha}</div>
+        </div>""", unsafe_allow_html=True)
 
     with c2:
-        st.markdown("""
-        <div style="border-radius:20px; overflow:hidden; box-shadow:0 20px 40px -10px rgba(0,0,0,0.15); border:6px solid white;">
-            <img src="https://images.unsplash.com/photo-1551076805-e1869033e561?q=80&w=1000&auto=format&fit=crop" style="width:100%; display:block;">
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("""<div style="border-radius:20px; overflow:hidden; box-shadow:0 20px 40px -10px rgba(0,0,0,0.15); border:6px solid white;"><img src="https://images.unsplash.com/photo-1551076805-e1869033e561?q=80&w=1000&auto=format&fit=crop" style="width:100%; display:block;"></div>""", unsafe_allow_html=True)
 
 # --- VISTA 2: DASHBOARD GENERAL ---
-def render_dashboard():
-    with st.sidebar:
-        st.header("Filtros")
-        opts_srv = ["TODOS"] + sorted(df_master['tipo_servicio'].unique()) if 'tipo_servicio' in df_master.columns else ["TODOS"]
-        sel_srv = st.selectbox("Especialidad", opts_srv, index=opts_srv.index("MAMOGRAFIA") if "MAMOGRAFIA" in opts_srv else 0)
-        df_base = df_master.copy() if sel_srv == "TODOS" else df_master[df_master['tipo_servicio'] == sel_srv].copy()
-        
-        if 'anio' in df_base.columns:
-            years = sorted(df_base['anio'].unique(), reverse=True)
-            sel_year = st.selectbox("Año Fiscal", years)
-            df_base = df_base[df_base['anio'] == sel_year]
-
-        if 'nombre_mes' in df_base.columns:
-            meses_orden = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-            df_base['nombre_mes'] = pd.Categorical(df_base['nombre_mes'], categories=meses_orden, ordered=True)
-            opts_mes = ["Todos"] + list(df_base['nombre_mes'].sort_values().unique())
-            sel_mes = st.selectbox("Mes", opts_mes)
-            if sel_mes != "Todos": df_base = df_base[df_base['nombre_mes'] == sel_mes]
-
-        st.markdown("---")
-        if st.button("🏠 Volver al Inicio"): st.session_state["app_state"] = "HOME"; st.rerun()
-
-    st.markdown(f"### 📊 Panorama Ejecutivo: {sel_srv}")
-    mostrar_kpis_completos(df_base)
+def render_dashboard(df_filtered, srv_name):
+    st.markdown(f"### 📊 Panorama Ejecutivo: {srv_name}")
+    mostrar_kpis_completos(df_filtered)
 
     col_L, col_R = st.columns([1.5, 1])
     with col_L:
         with st.container(border=True):
             st.markdown('<div class="chart-title">🗺️ Mapa Nacional</div>', unsafe_allow_html=True)
-            if geojson_peru and 'departamento' in df_base.columns and not df_base.empty:
-                map_data = df_base.groupby('departamento').size().reset_index(name='Total')
+            if geojson_peru and 'departamento' in df_filtered.columns and not df_filtered.empty:
+                map_data = df_filtered.groupby('departamento').size().reset_index(name='Total')
                 fig_map = px.choropleth_mapbox(map_data, geojson=geojson_peru, locations='departamento', featureidkey="properties.NOMBDEP",
                                            color="Total", color_continuous_scale="Blues", mapbox_style="carto-positron",
                                            zoom=3.8, center={"lat": -9.19, "lon": -75.01}, opacity=0.9)
@@ -292,11 +263,10 @@ def render_dashboard():
 
         with st.container(border=True):
             st.markdown('<div class="chart-title">📊 Ranking Departamental</div>', unsafe_allow_html=True)
-            if 'departamento' in df_base.columns:
-                rank = df_base['departamento'].value_counts().reset_index()
+            if 'departamento' in df_filtered.columns:
+                rank = df_filtered['departamento'].value_counts().reset_index()
                 rank.columns = ['Departamento', 'Atenciones']
-                fig_rank = px.bar(rank.head(10), x='Departamento', y='Atenciones', color='Atenciones', color_continuous_scale='Blues',
-                                  labels={'Departamento': 'Región', 'Atenciones': 'Nro. Solicitudes'})
+                fig_rank = px.bar(rank.head(10), x='Departamento', y='Atenciones', color='Atenciones', color_continuous_scale='Blues', labels={'Departamento': 'Región', 'Atenciones': 'Nro. Solicitudes'})
                 st.plotly_chart(style_chart(fig_rank), use_container_width=True)
 
     with col_R:
@@ -305,13 +275,13 @@ def render_dashboard():
         with tabs[0]: 
             with st.container(border=True):
                 st.markdown('<div class="chart-title">📅 Evolución Mensual</div>', unsafe_allow_html=True)
-                if 'anio_mes' in df_base.columns:
-                    evo = df_base.groupby('anio_mes').size().reset_index(name='Total')
+                if 'anio_mes' in df_filtered.columns:
+                    evo = df_filtered.groupby('anio_mes').size().reset_index(name='Total')
                     st.plotly_chart(style_chart(px.area(evo, x='anio_mes', y='Total', labels={'anio_mes': 'Mes', 'Total': 'Atenciones'})), use_container_width=True)
             with st.container(border=True):
                 st.markdown('<div class="chart-title">⏱️ Tiempo Promedio</div>', unsafe_allow_html=True)
-                if 'anio_mes' in df_base.columns:
-                    evo_tm = df_base.groupby('anio_mes')['tiempo_atencion_dias'].mean().reset_index()
+                if 'anio_mes' in df_filtered.columns:
+                    evo_tm = df_filtered.groupby('anio_mes')['tiempo_atencion_dias'].mean().reset_index()
                     fig_tm = px.line(evo_tm, x='anio_mes', y='tiempo_atencion_dias', markers=True, labels={'anio_mes': 'Mes', 'tiempo_atencion_dias': 'Días Promedio'})
                     fig_tm.update_traces(line_color='#F59E0B')
                     st.plotly_chart(style_chart(fig_tm), use_container_width=True)
@@ -319,45 +289,44 @@ def render_dashboard():
         with tabs[1]: 
             with st.container(border=True):
                 st.markdown('<div class="chart-title">🎂 Rango de Edades</div>', unsafe_allow_html=True)
-                if 'grupo_etario' in df_base.columns:
-                    age = df_base['grupo_etario'].value_counts().reset_index()
-                    st.plotly_chart(style_chart(px.bar(age, x='grupo_etario', y='count', color='count', color_continuous_scale='Teal',
-                                                       labels={'grupo_etario': 'Grupo Etario', 'count': 'Pacientes'})), use_container_width=True)
+                if 'grupo_etario' in df_filtered.columns:
+                    age = df_filtered['grupo_etario'].value_counts().reset_index()
+                    st.plotly_chart(style_chart(px.bar(age, x='grupo_etario', y='count', color='count', color_continuous_scale='Teal', labels={'grupo_etario': 'Grupo Etario', 'count': 'Pacientes'})), use_container_width=True)
             with st.container(border=True):
                 st.markdown('<div class="chart-title">🌎 Origen (Extranjeros)</div>', unsafe_allow_html=True)
-                if 'nacionalidad' in df_base.columns:
-                    nac = df_base['nacionalidad'].value_counts().reset_index()
+                if 'nacionalidad' in df_filtered.columns:
+                    nac = df_filtered['nacionalidad'].value_counts().reset_index()
                     nac.columns = ['Pais', 'Cantidad']
                     nac_fil = nac[~nac['Pais'].str.contains('PERU', case=False)] if len(nac)>1 else nac
                     if not nac_fil.empty:
-                        st.plotly_chart(style_chart(px.treemap(nac_fil, path=['Pais'], values='Cantidad', color='Cantidad', color_continuous_scale='Mint',
-                                                               labels={'labels': 'País', 'value': 'Total'})), use_container_width=True)
+                        st.plotly_chart(style_chart(px.treemap(nac_fil, path=['Pais'], values='Cantidad', color='Cantidad', color_continuous_scale='Mint', labels={'labels': 'País', 'value': 'Total'})), use_container_width=True)
                     else: st.info("Solo Perú.")
             with st.container(border=True):
                 st.markdown('<div class="chart-title">🧑‍🤝‍🧑 Etnia</div>', unsafe_allow_html=True)
-                if 'etnia' in df_base.columns:
-                    etn = df_base['etnia'].value_counts().head(8).reset_index()
+                if 'etnia' in df_filtered.columns:
+                    etn = df_filtered['etnia'].value_counts().head(8).reset_index()
                     etn.columns = ['Etnia', 'Cantidad']
                     st.plotly_chart(style_chart(px.pie(etn, names='Etnia', values='Cantidad', hole=0.6, color_discrete_sequence=px.colors.qualitative.Pastel)), use_container_width=True)
 
         with tabs[2]: 
             with st.container(border=True):
                 st.markdown('<div class="chart-title">🩺 BIRADS</div>', unsafe_allow_html=True)
-                if 'birads_categoria' in df_base.columns:
-                    bi = df_base['birads_categoria'].value_counts().reset_index()
+                if 'birads_categoria' in df_filtered.columns:
+                    bi = df_filtered['birads_categoria'].value_counts().reset_index()
                     st.plotly_chart(style_chart(px.bar(bi, x='birads_categoria', y='count', color='birads_categoria', labels={'birads_categoria': 'Categoría', 'count': 'Casos'})), use_container_width=True)
 
         with tabs[3]: 
             with st.container(border=True):
                 st.markdown('<div class="chart-title">⚙️ Estado</div>', unsafe_allow_html=True)
-                fl = df_base['estado'].value_counts().reset_index()
+                fl = df_filtered['estado'].value_counts().reset_index()
                 st.plotly_chart(style_chart(px.bar(fl, x='count', y='estado', orientation='h', color='estado', labels={'estado': 'Estado', 'count': 'Solicitudes'})), use_container_width=True)
 
 # --- VISTA 3: REGIONAL ---
-def render_regional():
+def render_regional(df_filtered_global):
     dep = st.session_state["selected_dept"]
     col_dep = 'departamento' if 'departamento' in df_master.columns else 'nombdep'
-    df_r = df_master[df_master[col_dep] == dep].copy()
+    
+    df_r = df_filtered_global[df_filtered_global[col_dep] == dep].copy()
     
     st.button("⬅️ Volver al Nacional", on_click=lambda: st.session_state.update(app_state="DASHBOARD", selected_dept=None))
     st.markdown(f"### Análisis Regional: {dep}")
@@ -378,7 +347,6 @@ def render_regional():
                 st.markdown('<div class="chart-title">⚙️ Estado Atención Local</div>', unsafe_allow_html=True)
                 fl = df_r['estado'].value_counts().reset_index()
                 st.plotly_chart(style_chart(px.bar(fl, x='count', y='estado', orientation='h', color='estado', labels={'estado': 'Estado', 'count': 'Cantidad'})), use_container_width=True)
-
         with c_right:
             with st.container(border=True):
                 st.markdown('<div class="chart-title">🏆 Top Distritos</div>', unsafe_allow_html=True)
@@ -409,6 +377,11 @@ def render_regional():
             cols_final = [c for c in cols_show if c in df_r.columns]
             st.dataframe(df_r[cols_final], use_container_width=True)
 
-if st.session_state["app_state"] == "HOME": render_home()
-elif st.session_state["app_state"] == "DASHBOARD": render_dashboard()
-elif st.session_state["app_state"] == "REGIONAL": render_regional()
+if st.session_state["app_state"] == "HOME":
+    render_home()
+else:
+    df_filtrado, servicio_nombre = render_sidebar_filters(df_master)
+    if st.session_state["app_state"] == "DASHBOARD":
+        render_dashboard(df_filtrado, servicio_nombre)
+    elif st.session_state["app_state"] == "REGIONAL":
+        render_regional(df_filtrado)
