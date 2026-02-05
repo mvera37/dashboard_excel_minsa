@@ -6,11 +6,11 @@ import plotly.express as px
 import os
 import json
 import warnings
-import datetime
+import re
 
 # --- CONFIGURACIÓN ---
 warnings.filterwarnings("ignore")
-st.set_page_config(page_title="TeleMammo BI v11.1", page_icon="💙", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="TeleMammo BI v12.0", page_icon="💙", layout="wide", initial_sidebar_state="collapsed")
 
 # --- ESTILOS CSS ---
 st.markdown("""
@@ -60,7 +60,10 @@ st.markdown("""
     .kpi-lbl { font-size: 0.7rem; color: #64748B; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
     .kpi-sub { font-size: 0.8rem; font-weight: 500; color: #94A3B8; }
 
-    /* 4. CHART CARDS */
+    /* 4. TABLAS PLAN 2025 */
+    .stDataFrame { border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; }
+    
+    /* 5. CHART CARDS */
     [data-testid="stVerticalBlockBorderWrapper"] {
         background-color: white; border-radius: 16px !important;
         border: 1px solid #E2E8F0 !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
@@ -164,7 +167,6 @@ def mostrar_kpis_completos(df_input):
         dep = df_input['departamento'].nunique() if 'departamento' in df_input.columns else 0
     else: intensidad=tasa=prom=atend=anul=tiempo=dep=0
 
-    # --- CORRECCIÓN DE SINTAXIS AQUÍ ---
     r1 = st.columns(4)
     datos_r1 = [(f"{total:,.0f}", "Solicitudes", "Total"), (f"{intensidad:.1f}%", "Intensidad", "40-69 años"), (f"{tasa:.1f}%", "Anormalidad", "BIRADS 3-5"), (f"{prom:.0f}", "Promedio Diario", "Atenciones")]
     for col, (val, tit, sub) in zip(r1, datos_r1):
@@ -178,34 +180,42 @@ def mostrar_kpis_completos(df_input):
             st.markdown(kpi_html(val, tit, sub), unsafe_allow_html=True)
     
     st.write("")
-    # ----------------------------------
 
 # --- CONTROLADOR GLOBAL DE FILTROS ---
 def render_sidebar_filters(df_data):
     with st.sidebar:
-        st.header("Filtros Globales")
+        st.header("Menú Principal")
         
-        opts_srv = ["TODOS"] + sorted(df_data['tipo_servicio'].unique()) if 'tipo_servicio' in df_data.columns else ["TODOS"]
-        sel_srv = st.selectbox("Especialidad", opts_srv, index=opts_srv.index("MAMOGRAFIA") if "MAMOGRAFIA" in opts_srv else 0)
+        # Botones de Navegación
+        if st.button("🏠 Inicio"): st.session_state["app_state"] = "HOME"; st.rerun()
+        if st.button("📊 Dashboard General"): st.session_state["app_state"] = "DASHBOARD"; st.rerun()
+        if st.button("📋 Plan 2025-2026"): st.session_state["app_state"] = "PLAN_2025"; st.rerun()
         
-        df_f = df_data.copy() if sel_srv == "TODOS" else df_data[df_data['tipo_servicio'] == sel_srv].copy()
-        
-        if 'anio' in df_f.columns:
-            years = sorted(df_f['anio'].unique(), reverse=True)
-            sel_year = st.selectbox("Año Fiscal", years)
-            df_f = df_f[df_f['anio'] == sel_year]
-
-        if 'nombre_mes' in df_f.columns:
-            meses_orden = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-            df_f['nombre_mes'] = pd.Categorical(df_f['nombre_mes'], categories=meses_orden, ordered=True)
-            opts_mes = ["Todos"] + list(df_f['nombre_mes'].sort_values().unique())
-            sel_mes = st.selectbox("Mes", opts_mes)
-            if sel_mes != "Todos": df_f = df_f[df_f['nombre_mes'] == sel_mes]
-
         st.markdown("---")
-        if st.button("🏠 Volver al Inicio"): st.session_state["app_state"] = "HOME"; st.rerun()
         
-        return df_f, sel_srv
+        # Filtros solo si estamos en Dashboard o Regional (NO en Plan 2025)
+        if st.session_state["app_state"] in ["DASHBOARD", "REGIONAL"]:
+            st.subheader("Filtros Dashboard")
+            opts_srv = ["TODOS"] + sorted(df_data['tipo_servicio'].unique()) if 'tipo_servicio' in df_data.columns else ["TODOS"]
+            sel_srv = st.selectbox("Especialidad", opts_srv, index=opts_srv.index("MAMOGRAFIA") if "MAMOGRAFIA" in opts_srv else 0)
+            
+            df_f = df_data.copy() if sel_srv == "TODOS" else df_data[df_data['tipo_servicio'] == sel_srv].copy()
+            
+            if 'anio' in df_f.columns:
+                years = sorted(df_f['anio'].unique(), reverse=True)
+                sel_year = st.selectbox("Año Fiscal", years)
+                df_f = df_f[df_f['anio'] == sel_year]
+
+            if 'nombre_mes' in df_f.columns:
+                meses_orden = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+                df_f['nombre_mes'] = pd.Categorical(df_f['nombre_mes'], categories=meses_orden, ordered=True)
+                opts_mes = ["Todos"] + list(df_f['nombre_mes'].sort_values().unique())
+                sel_mes = st.selectbox("Mes", opts_mes)
+                if sel_mes != "Todos": df_f = df_f[df_f['nombre_mes'] == sel_mes]
+            
+            return df_f, sel_srv
+        
+        return df_data, "MAMOGRAFIA"
 
 # --- VISTA 1: HOME ---
 def render_home():
@@ -377,11 +387,216 @@ def render_regional(df_filtered_global):
             cols_final = [c for c in cols_show if c in df_r.columns]
             st.dataframe(df_r[cols_final], use_container_width=True)
 
+# --- VISTA 4: PLAN 2025-2026 (ACTUALIZADA: Diseño y Orden) ---
+def render_plan_2025(df_data):
+    # 1. TÍTULO ACTUALIZADO
+    st.markdown("### 📋 PLAN PARA LA IMPLEMENTACIÓN DE LA TELEMAMOGRAFÍA EN ESTABLECIMIENTOS PRIORIZADOS, PERIODO 2025-2026")
+    st.markdown("Monitorización específica de atenciones (Estado: Atendido | Servicio: Mamografía).")
+    st.markdown("---")
+
+    # ==============================================================================
+    # FILTROS BASE GLOBALES PARA ESTA VISTA
+    # ==============================================================================
+    mask_base = (
+        (df_data['anio'].isin([2025, 2026])) &
+        (df_data['tipo_servicio'] == 'MAMOGRAFIA') &
+        (df_data['estado'].astype(str).str.upper().str.contains("ATENDIDO"))
+    )
+
+    # ==============================================================================
+    # TABLA 1: E.S. CONSULTANTE (ORIGEN)
+    # ==============================================================================
+    mapeo_consultante = {
+        "CENTRO MATERNO INFANTIL RÍMAC": "CENTRO MATERNO INFANTIL RÍMAC",
+        "HOSPITAL GENERAL DE HUACHO": "HOSPITAL GENERAL DE HUACHO",
+        "CENTRO MATERNO INFANTIL JOSE CARLOS MARIATEGUI": "CENTRO MATERNO INFANTIL JOSE CARLOS MARIATEGUI",
+        "C.S. MATERNO INFANTIL PACHACUTEC  PERU-COREA": "C.S. MATERNO INFANTIL PACHACUTEC  PERU-COREA",
+        "HOSPITAL AMAZONICO - YARINACOCHA": "HOSPITAL AMAZONICO - YARINACOCHA",
+        "CENTRO MATERNO INFANTIL EL PROGRESO": "CENTRO MATERNO INFANTIL EL PROGRESO",
+        "SANTA ANITA": "SANTA ANITA",
+        "CENTRO DE SALUD MATERNO INFANTIL MAGDALENA": "CENTRO DE SALUD MATERNO INFANTIL MAGDALENA",
+        "HOSPITAL REGIONAL DOCENTE CAJAMARCA": "HOSPITAL REGIONAL DOCENTE CAJAMARCA",
+        "QUILLABAMBA": "QUILLABAMBA",
+        "HOSPITAL HIPOLITO UNANUE DE TACNA": "HOSPITAL HIPOLITO UNANUE DE TACNA",
+        "DE APOYO MANUEL HIGA ARAKAKI": "DE APOYO MANUEL HIGA ARAKAKI",
+        "HOSPITAL VICTOR RAMOS GUARDIA - HUARAZ": "HOSPITAL VICTOR RAMOS GUARDIA - HUARAZ",
+        "TUPAC AMARU": "TUPAC AMARU",
+        "HOSPITAL DE APOYO DE POMABAMBA ANTONIO CALDAS DOMINGUEZ": "HOSPITAL DE APOYO DE POMABAMBA ANTONIO CALDAS DOMINGUEZ",
+        "HOSPITAL DE VENTANILLA": "HOSPITAL DE VENTANILLA",
+        "JOSE LEONARDO ORTIZ": "JOSE LEONARDO ORTIZ",
+        "HOSPITAL DE EMERGENCIAS CHALHUANCA": "HOSPITAL DE EMERGENCIAS CHALHUANCA",
+        "HOSPITAL SANTA GEMA DE  YURIMAGUAS": "HOSPITAL SANTA GEMA DE  YURIMAGUAS",
+        "HOSPITAL REGIONAL DOCENTE LAS MERCEDES": "HOSPITAL REGIONAL DOCENTE LAS MERCEDES",
+        "HOSPITAL REGIONAL JOSE ALFREDO MENDOZA OLAVARRIA JAMO II-2": "HOSPITAL REGIONAL JOSE ALFREDO MENDOZA OLAVARRIA JAMO II-2",
+        "HOSPITAL SAN JUAN DE MATUCANA": "HOSPITAL SAN JUAN DE MATUCANA",
+        "BANDA SHILCAYO": "BANDA SHILCAYO",
+        "HOSP. ROMAN EGOAVIL PANDO VILLA RICA": "HOSP. ROMAN EGOAVIL PANDO VILLA RICA",
+        "HOSPITAL DE APOYO SAN FRANCISCO": "HOSPITAL DE APOYO SAN FRANCISCO",
+        "HOSPITAL DEPARTAMENTAL DE HUANCAVELICA": "HOSPITAL DEPARTAMENTAL DE HUANCAVELICA",
+        "HOSPITAL REGIONAL DE LORETO FELIPE SANTIAGO ARRIOLA IGLESIAS": "HOSPITAL REGIONAL DE LORETO FELIPE SANTIAGO ARRIOLA IGLESIAS",
+        "HOSPITAL SANTA ROSA": "HOSPITAL SANTA ROSA",
+        "NAC. DANIEL A. CARRION": "NAC. DANIEL A. CARRION"
+    }
+    
+    nombres_bd_origen = list(mapeo_consultante.values())
+    df_t1 = df_data[mask_base & df_data['nombre_eess_origen'].isin(nombres_bd_origen)].copy()
+
+    st.subheader("Tabla 1: E.S. CONSULTANTE (ORIGEN)")
+    if not df_t1.empty:
+        # 1. Agrupar
+        t1_agrup = df_t1.groupby(['nombre_eess_origen', 'departamento']).size().reset_index(name='ATENCIONES')
+        
+        # 2. Ordenar por Atenciones (Descendente)
+        t1_agrup = t1_agrup.sort_values('ATENCIONES', ascending=False)
+        
+        # 3. Resetear índice para que el orden sea 1, 2, 3... basado en el sort anterior
+        t1_agrup.reset_index(drop=True, inplace=True)
+        t1_agrup.index = t1_agrup.index + 1
+        t1_agrup.reset_index(inplace=True)
+        t1_agrup.rename(columns={'index': 'N°'}, inplace=True)
+        t1_agrup.columns = ['N°', 'E.S. CONSULTANTE', 'DIRIS / DIRESA/GERESA', 'ATENCIONES']
+        
+        # 4. Fila Total (Sin número de orden para diseño limpio)
+        fila_total_1 = pd.DataFrame([['', 'TOTAL GENERAL', '', t1_agrup['ATENCIONES'].sum()]], columns=t1_agrup.columns)
+        t1_final = pd.concat([t1_agrup, fila_total_1], ignore_index=True)
+
+        # 5. Visualización Mejorada
+        st.dataframe(
+            t1_final, 
+            column_config={
+                "N°": st.column_config.TextColumn(width="small"),
+                "E.S. CONSULTANTE": st.column_config.TextColumn(width="large"),
+                "DIRIS / DIRESA/GERESA": st.column_config.TextColumn(width="medium"),
+                "ATENCIONES": st.column_config.ProgressColumn(
+                    "ATENCIONES", 
+                    format="%d", 
+                    min_value=0, 
+                    max_value=int(t1_agrup['ATENCIONES'].max())
+                )
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("Sin datos para Tabla 1.")
+
+    st.divider()
+
+    # ==============================================================================
+    # TABLA 2: E.S. CONSULTOR (DESTINO)
+    # ==============================================================================
+    mapeo_consultor = {
+        "INSTITUTO NACIONAL DE ENFERMEDADES NEOPLASICAS": "INSTITUTO NACIONAL DE ENFERMEDADES NEOPLASICAS",
+        "MINSA MOVIL": "MINSA MOVIL",
+        "HOSPITAL DE EMERGENCIAS VILLA EL SALVADOR": "HOSPITAL DE EMERGENCIAS VILLA EL SALVADOR",
+        "INSTITUTO REGIONAL DE ENFERMEDADES NEOPLÁSICAS DEL CENTRO - IREN CENTRO": "INSTITUTO REGIONAL DE ENFERMEDADES NEOPLÁSICAS DEL CENTRO - IREN CENTRO",
+        "HOSPITAL DE LIMA ESTE -VITARTE": "HOSPITAL DE LIMA ESTE -VITARTE",
+        "REGIONAL DE ENFERMEDADES NEOPLASICAS - NORTE - DR. LUIS PINILLOS GANOZA": "REGIONAL DE ENFERMEDADES NEOPLASICAS - NORTE - DR. LUIS PINILLOS GANOZA",
+        "HOSPITAL REGIONAL DE LORETO FELIPE SANTIAGO ARRIOLA IGLESIAS": "HOSPITAL REGIONAL DE LORETO FELIPE SANTIAGO ARRIOLA IGLESIAS",
+        "INSTITUTO REGIONAL DE ENFERMEDADES NEOPLASICAS": "INSTITUTO REGIONAL DE ENFERMEDADES NEOPLASICAS",
+        "HOSPITAL DE APOYO SANTA ROSA": "HOSPITAL DE APOYO SANTA ROSA",
+        "HOSPITAL REGIONAL DE AYACUCHO MIGUEL ÁNGEL MARISCAL LLERENA": "HOSPITAL REGIONAL DE AYACUCHO MIGUEL ÁNGEL MARISCAL LLERENA"
+    }
+    nombres_bd_destino = list(mapeo_consultor.values())
+    col_destino = 'nombre_eess_destino'
+    
+    st.subheader("Tabla 2: E.S. CONSULTOR (DESTINO)")
+    if col_destino in df_data.columns:
+        df_t2 = df_data[mask_base & df_data[col_destino].isin(nombres_bd_destino)].copy()
+        if not df_t2.empty:
+            # 1. Agrupar
+            t2_agrup = df_t2.groupby([col_destino]).size().reset_index(name='ATENCIONES')
+            
+            # 2. Ordenar
+            t2_agrup = t2_agrup.sort_values('ATENCIONES', ascending=False)
+            
+            # 3. Resetear índice para orden numérico correcto
+            t2_agrup.reset_index(drop=True, inplace=True)
+            t2_agrup.index = t2_agrup.index + 1
+            t2_agrup.reset_index(inplace=True)
+            t2_agrup.rename(columns={'index': 'N°'}, inplace=True)
+            t2_agrup.columns = ['N°', 'E.S. CONSULTOR', 'ATENCIONES']
+            
+            # 4. Fila Total
+            fila_total_2 = pd.DataFrame([['', 'TOTAL GENERAL', t2_agrup['ATENCIONES'].sum()]], columns=t2_agrup.columns)
+            t2_final = pd.concat([t2_agrup, fila_total_2], ignore_index=True)
+            
+            # 5. Visualización
+            st.dataframe(
+                t2_final,
+                column_config={
+                    "N°": st.column_config.TextColumn(width="small"),
+                    "E.S. CONSULTOR": st.column_config.TextColumn(width="large"),
+                    "ATENCIONES": st.column_config.ProgressColumn(
+                        "ATENCIONES", 
+                        format="%d",
+                        min_value=0,
+                        max_value=int(t2_agrup['ATENCIONES'].max())
+                    )
+                },
+                use_container_width=True, 
+                hide_index=True
+            )
+        else:
+            st.warning("Sin datos para Tabla 2.")
+    else:
+        st.error(f"❌ Falta columna '{col_destino}'.")
+
+    st.divider()
+
+    # ==============================================================================
+    # TABLA 3: CLASIFICACIÓN BIRADS
+    # ==============================================================================
+    st.subheader("Tabla 3: CLASIFICACIÓN BIRADS")
+    
+    df_t3 = df_data[mask_base].copy()
+
+    if 'birads_raw' in df_t3.columns:
+        def clean_birads_num(val):
+            val_str = str(val).upper().strip()
+            match = re.search(r'([0-6])', val_str)
+            if match: return match.group(1)
+            return "0"
+
+        df_t3['birads_clean'] = df_t3['birads_raw'].apply(clean_birads_num)
+        t3_agrup = df_t3.groupby('birads_clean').size().reset_index(name='ATENCIONES')
+
+        ref_birads = pd.DataFrame({'birads_clean': ['0', '1', '2', '3', '4', '5', '6']})
+        t3_final = pd.merge(ref_birads, t3_agrup, on='birads_clean', how='left').fillna(0)
+        t3_final['ATENCIONES'] = t3_final['ATENCIONES'].astype(int)
+
+        t3_final.columns = ['BIRADS', 'ATENCIONES']
+        
+        total_b = t3_final['ATENCIONES'].sum()
+        fila_total_3 = pd.DataFrame([['TOTAL GENERAL', total_b]], columns=['BIRADS', 'ATENCIONES'])
+        
+        t3_display = pd.concat([t3_final, fila_total_3], ignore_index=True)
+
+        st.dataframe(
+            t3_display,
+            column_config={
+                "BIRADS": st.column_config.TextColumn(width="medium"),
+                "ATENCIONES": st.column_config.NumberColumn(format="%d")
+            },
+            use_container_width=False,
+            hide_index=True
+        )
+
+    else:
+        st.error("No se encontró la columna de BIRADS para generar la Tabla 3.")
+
+
+# --- MAIN ROUTER ---
 if st.session_state["app_state"] == "HOME":
     render_home()
 else:
+    # Sidebar
     df_filtrado, servicio_nombre = render_sidebar_filters(df_master)
+    
+    # Router
     if st.session_state["app_state"] == "DASHBOARD":
         render_dashboard(df_filtrado, servicio_nombre)
     elif st.session_state["app_state"] == "REGIONAL":
         render_regional(df_filtrado)
+    elif st.session_state["app_state"] == "PLAN_2025":
+        render_plan_2025(df_master)

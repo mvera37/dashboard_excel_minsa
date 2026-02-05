@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import os
 
 # --- CONFIGURACIÓN ---
-EXCEL_MAIN =  r"D:\MINSA\Proyecto Mónica\Analisis - copia\Reporte_SIA_TELEATIENDO_13012026.xlsx"
+EXCEL_MAIN =  r"D:\MINSA\Proyecto Mónica\Analisis - copia\Reporte_SIA_TELEATIENDO_04022026.xlsx"
 EXCEL_EESS = "EESS.xlsx"
 TABLE_DESTINO = "vista_master_dashboard"
 
@@ -131,6 +131,18 @@ def procesar_principal(maestros):
                 df.loc[mask_quilla, 'departamento'] = 'CUSCO'
                 df.loc[mask_quilla, 'provincia'] = 'LA CONVENCION' # Asignamos también su provincia correcta
             # ------------------------------------------------
+        
+        # === B. IDENTIFICAR Y RENOMBRAR DESTINO (TU CORRECCIÓN) ===
+        # Buscamos "nombre" + "establecimiento" + "destino" para evitar IDs
+        col_destino = next((c for c in df.columns if "nombre" in c and "establecimiento" in c and "destino" in c), None)
+        
+        if col_destino:
+            print("   > Detectado EESS Destino.")
+            df.rename(columns={col_destino: "nombre_eess_destino"}, inplace=True)
+        else:
+            print("   ⚠️ No se encontró columna destino, se crea vacía.")
+            df["nombre_eess_destino"] = "DESCONOCIDO"
+
 
         # Cruces Nacio/Etnia
         if "nac_id" in df.columns and 'nacionalidad' in maestros:
@@ -186,7 +198,7 @@ def main():
         'anio', 'fecha_solicitud', 'tipo_servicio', 'estado', 
         'es_atendido', 'es_anulado', 'es_anormal', 'birads_raw',
         'tiempo_atencion_dias', 'edad', 'sexo', 'grupo_etario',
-        'departamento', 'provincia', 'distrito_nombre', 'nombre_eess_origen',
+        'departamento', 'provincia', 'distrito_nombre', 'nombre_eess_origen','nombre_eess_destino',
         'nacionalidad', 'etnia'
     ]
     final_cols = [c for c in cols_keep if c in df_final.columns]
