@@ -10,47 +10,31 @@ import re
 
 # --- CONFIGURACIÓN ---
 warnings.filterwarnings("ignore")
-st.set_page_config(page_title="TeleMammo BI v12.0", page_icon="💙", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="DITEL - Portal BI", page_icon="🇵🇪", layout="wide", initial_sidebar_state="collapsed")
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS PERSONALIZADOS ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
     
     .stApp { background-color: #F8FAFC; font-family: 'Inter', sans-serif; }
     
-    /* 1. NAVBAR */
-    .navbar { 
-        display: flex; justify-content: space-between; align-items: center; 
-        padding: 1rem 2rem; background: white; border-radius: 12px; 
-        margin-bottom: 2rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); 
-        border: 1px solid #E2E8F0; 
-    }
-    
-    /* 2. HERO SECTION */
-    .hero-badge {
+    /* === ESTILOS LANDING PAGE === */
+    .landing-header { text-align: center; margin-top: 40px; margin-bottom: 20px; }
+    .landing-tag {
         background-color: #DBEAFE; color: #1E40AF; padding: 6px 16px; 
-        border-radius: 20px; font-weight: 700; font-size: 0.75rem; 
-        text-transform: uppercase; display: inline-block; margin-bottom: 1rem;
-        letter-spacing: 0.05em;
+        border-radius: 20px; font-weight: 700; font-size: 0.8rem; 
+        text-transform: uppercase; display: inline-block; letter-spacing: 0.05em;
     }
-    .hero-title {
-        font-size: 3.5rem; font-weight: 800; color: #0F172A; line-height: 1.1; margin-bottom: 1.5rem;
+    .landing-title { font-size: 4rem; font-weight: 800; color: #0F172A; line-height: 1.1; margin-top: 20px; }
+    .landing-subtitle { font-size: 1.2rem; color: #475569; margin-top: 20px; margin-bottom: 40px; line-height: 1.6; }
+    .landing-footer {
+        background-color: #0F172A; color: #94A3B8; padding: 60px 40px; margin-top: 80px;
+        border-radius: 20px 20px 0 0; font-size: 0.9rem;
     }
-    .hero-desc {
-        font-size: 1.1rem; color: #475569; line-height: 1.6; margin-bottom: 2rem; max-width: 95%;
-    }
-    .hero-stats-container {
-        display: flex; flex-wrap: wrap; gap: 20px; align-items: center;
-        margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #E2E8F0;
-    }
-    .stat-item { display: flex; align-items: center; gap: 8px; color: #64748B; font-weight: 600; font-size: 0.95rem; }
-    .update-badge {
-        background-color: #EFF6FF; color: #2563EB; padding: 4px 12px; border-radius: 6px; 
-        font-size: 0.85rem; font-weight: 700; border: 1px solid #BFDBFE;
-    }
-
-    /* 3. KPI CARDS */
+    .footer-title { color: white; font-weight: 700; margin-bottom: 15px; font-size: 1rem; }
+    
+    /* === ESTILOS DASHBOARD === */
     .kpi-card {
         background-color: white; border-radius: 12px; padding: 20px 24px;
         border: 1px solid #E2E8F0; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
@@ -59,11 +43,8 @@ st.markdown("""
     .kpi-val { font-size: 2rem; font-weight: 800; color: #0F172A; line-height: 1.1; margin-bottom: 8px; }
     .kpi-lbl { font-size: 0.7rem; color: #64748B; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
     .kpi-sub { font-size: 0.8rem; font-weight: 500; color: #94A3B8; }
-
-    /* 4. TABLAS PLAN 2025 */
-    .stDataFrame { border: 1px solid #E2E8F0; border-radius: 8px; overflow: hidden; }
     
-    /* 5. CHART CARDS */
+    /* Contenedores de Gráficos */
     [data-testid="stVerticalBlockBorderWrapper"] {
         background-color: white; border-radius: 16px !important;
         border: 1px solid #E2E8F0 !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
@@ -72,6 +53,11 @@ st.markdown("""
     .chart-title {
         font-size: 0.95rem; font-weight: 700; color: #334155; margin-bottom: 15px;
         display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.02em;
+    }
+    
+    /* Botones Landing */
+    div.stButton > button:first-child {
+        width: 100%; border-radius: 8px; font-weight: 600; padding: 0.5rem 1rem;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -184,71 +170,133 @@ def mostrar_kpis_completos(df_input):
 # --- CONTROLADOR GLOBAL DE FILTROS ---
 def render_sidebar_filters(df_data):
     with st.sidebar:
-        st.header("Menú Principal")
+        if st.session_state["app_state"] == "CONVENIO":
+            st.header("Gestión 2025")
+            if st.button("⬅️ Volver al Portal"):
+                st.session_state["app_state"] = "HOME"
+                st.rerun()
+            st.info("Visualización exclusiva del Convenio de Gestión.")
+            return df_data, "CONVENIO"
         
-        # Botones de Navegación
-        if st.button("🏠 Inicio"): st.session_state["app_state"] = "HOME"; st.rerun()
-        if st.button("📊 Dashboard General"): st.session_state["app_state"] = "DASHBOARD"; st.rerun()
-        if st.button("📋 Plan 2025-2026"): st.session_state["app_state"] = "PLAN_2025"; st.rerun()
-        
-        st.markdown("---")
-        
-        # Filtros solo si estamos en Dashboard o Regional (NO en Plan 2025)
-        if st.session_state["app_state"] in ["DASHBOARD", "REGIONAL"]:
-            st.subheader("Filtros Dashboard")
-            opts_srv = ["TODOS"] + sorted(df_data['tipo_servicio'].unique()) if 'tipo_servicio' in df_data.columns else ["TODOS"]
-            sel_srv = st.selectbox("Especialidad", opts_srv, index=opts_srv.index("MAMOGRAFIA") if "MAMOGRAFIA" in opts_srv else 0)
+        else:
+            # === MOSTRAR FECHA EN SIDEBAR ===
+            fecha_txt = "N/A"
+            if 'fecha_solicitud' in df_data.columns and not df_data.empty:
+                f_max = df_data['fecha_solicitud'].max()
+                if pd.notnull(f_max): fecha_txt = f_max.strftime("%d/%m/%Y")
             
-            df_f = df_data.copy() if sel_srv == "TODOS" else df_data[df_data['tipo_servicio'] == sel_srv].copy()
-            
-            if 'anio' in df_f.columns:
-                years = sorted(df_f['anio'].unique(), reverse=True)
-                sel_year = st.selectbox("Año Fiscal", years)
-                df_f = df_f[df_f['anio'] == sel_year]
+            st.markdown(f"""
+                <div style="background-color:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; 
+                            padding:10px; border-radius:8px; text-align:center; margin-bottom:20px;">
+                    <small style="display:block; font-weight:600; margin-bottom:4px;">Última Actualización</small>
+                    <span style="font-size:1.1rem; font-weight:800;">{fecha_txt}</span>
+                </div>
+            """, unsafe_allow_html=True)
+            # ===============================
 
-            if 'nombre_mes' in df_f.columns:
-                meses_orden = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-                df_f['nombre_mes'] = pd.Categorical(df_f['nombre_mes'], categories=meses_orden, ordered=True)
-                opts_mes = ["Todos"] + list(df_f['nombre_mes'].sort_values().unique())
-                sel_mes = st.selectbox("Mes", opts_mes)
-                if sel_mes != "Todos": df_f = df_f[df_f['nombre_mes'] == sel_mes]
+            st.header("Menú Principal")
+            if st.button("🏠 Inicio"): st.session_state["app_state"] = "HOME"; st.rerun()
+            if st.button("📊 Dashboard General"): st.session_state["app_state"] = "DASHBOARD"; st.rerun()
+            if st.button("📋 Datos Plan 2025-2026"): st.session_state["app_state"] = "PLAN_2025"; st.rerun()
             
-            return df_f, sel_srv
-        
-        return df_data, "MAMOGRAFIA"
+            st.markdown("---")
+            
+            if st.session_state["app_state"] in ["DASHBOARD", "REGIONAL"]:
+                st.subheader("Filtros Dashboard")
+                opts_srv = ["TODOS"] + sorted(df_data['tipo_servicio'].unique()) if 'tipo_servicio' in df_data.columns else ["TODOS"]
+                sel_srv = st.selectbox("Especialidad", opts_srv, index=opts_srv.index("MAMOGRAFIA") if "MAMOGRAFIA" in opts_srv else 0)
+                
+                df_f = df_data.copy() if sel_srv == "TODOS" else df_data[df_data['tipo_servicio'] == sel_srv].copy()
+                
+                if 'anio' in df_f.columns:
+                    years = sorted(df_f['anio'].unique(), reverse=True)
+                    sel_year = st.selectbox("Año Fiscal", years)
+                    df_f = df_f[df_f['anio'] == sel_year]
 
-# --- VISTA 1: HOME ---
+                if 'nombre_mes' in df_f.columns:
+                    meses_orden = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+                    df_f['nombre_mes'] = pd.Categorical(df_f['nombre_mes'], categories=meses_orden, ordered=True)
+                    opts_mes = ["Todos"] + list(df_f['nombre_mes'].sort_values().unique())
+                    sel_mes = st.selectbox("Mes", opts_mes)
+                    if sel_mes != "Todos": df_f = df_f[df_f['nombre_mes'] == sel_mes]
+                
+                return df_f, sel_srv
+            
+            return df_data, "MAMOGRAFIA"
+
+# --- VISTA 1: HOME (LIMPIA) ---
 def render_home():
-    st.markdown("""<div class="navbar"><div style="font-weight:800; font-size:1.4rem; color:#0F172A; display:flex; align-items:center; gap:10px;"><span>💙</span> TeleMammo <small style="color:#64748B; margin-left:8px; font-weight:500;">MINSA BI</small></div></div>""", unsafe_allow_html=True)
+    st.markdown("""
+        <div style="display:flex; justify-content:space-between; align-items:center; padding: 10px 0;">
+            <div style="font-weight:800; font-size:1.2rem; color:#0F172A;">
+                <span style="color:#2563EB;">🛡️</span> DITEL-MINSA <br>
+                <span style="font-size:0.7rem; color:#64748B; font-weight:500;">DIRECCIÓN DE TELESALUD</span>
+            </div>
+            <div style="display:flex; gap:20px; font-size:0.9rem; font-weight:500; color:#475569;">
+                <span>Inicio</span>
+                <span>Recursos</span>
+                <span>Soporte</span>
+                <span style="color:#2563EB; font-weight:700;">Portal Médico</span>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-    total_home = len(df_master)
-    dias_home = df_master['tiempo_atencion_dias'].mean() if 'tiempo_atencion_dias' in df_master.columns else 0
-    
-    if 'fecha_solicitud' in df_master.columns:
-        fecha_max = df_master['fecha_solicitud'].max()
-        texto_fecha = fecha_max.strftime("%d/%m/%Y") if pd.notnull(fecha_max) else "Sin Data"
-    else: texto_fecha = "N/A"
-
-    c1, c2 = st.columns([1.2, 1], gap="large")
-    with c1:
-        st.write("") 
-        st.markdown('<div class="hero-badge">Dirección de Telemedicina - DITEL</div>', unsafe_allow_html=True)
-        st.markdown('<div class="hero-title">Transformando el Diagnóstico: <span style="color:#2563EB">Telemamografía</span></div>', unsafe_allow_html=True)
-        st.markdown("""<div class="hero-desc">Modernizando la detección temprana del cáncer de mama en Perú con tecnología digital avanzada. Monitoreo en tiempo real de cobertura, tiempos de atención y hallazgos clínicos (BIRADS).</div>""", unsafe_allow_html=True)
-        
-        if st.button("🚀 Acceder al Dashboard Ejecutivo", type="primary"):
-            st.session_state["app_state"] = "DASHBOARD"; st.rerun()
-
-        st.markdown(f"""
-        <div class="hero-stats-container">
-            <div class="stat-item"><span style="font-size:1.2rem">📄</span> <span><strong>{total_home:,.0f}</strong> Atenciones</span></div>
-            <div class="stat-item"><span style="font-size:1.2rem">⚡</span> <span><strong>{dias_home:.1f}</strong> Días prom</span></div>
-            <div class="stat-item"><span style="font-size:1.2rem">🛡️</span> Datos Seguros</div>
-            <div class="stat-item update-badge">📅 Actualizado al: {texto_fecha}</div>
-        </div>""", unsafe_allow_html=True)
-
+    c1, c2, c3 = st.columns([1, 6, 1])
     with c2:
-        st.markdown("""<div style="border-radius:20px; overflow:hidden; box-shadow:0 20px 40px -10px rgba(0,0,0,0.15); border:6px solid white;"><img src="https://images.unsplash.com/photo-1551076805-e1869033e561?q=80&w=1000&auto=format&fit=crop" style="width:100%; display:block;"></div>""", unsafe_allow_html=True)
+        st.markdown("""
+            <div class="landing-header">
+                <div class="landing-tag">📡 DITEL - MINSA | SALUD DIGITAL</div>
+                <div class="landing-title">
+                    Gestión de Información<br>en <span style="color:#2563EB">Telesalud</span>
+                </div>
+                <div class="landing-subtitle">
+                    Consolidación, trazabilidad y monitoreo para una atención oportuna y
+                    eficiente en el Sistema Nacional de Salud.
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # 3 BOTONES ALINEADOS
+        c_spacer_izq, col_btn_1, col_btn_2, col_btn_3, c_spacer_der = st.columns([0.5, 3, 3, 3, 0.5], gap="small")
+        
+        with col_btn_1:
+            st.link_button(
+                "Ingresar a Plataforma 🔗", 
+                url="https://lookerstudio.google.com/u/1/reporting/e4705887-6f1e-450a-9c15-425fcb4d5e59/page/p_zgln1rvisd", 
+                type="primary", 
+                use_container_width=True
+            )
+        with col_btn_2:
+            if st.button("Ver Tablero de Gestión 📊", use_container_width=True):
+                st.session_state["app_state"] = "DASHBOARD"
+                st.rerun()
+        with col_btn_3:
+            if st.button("Convenio Gestión 2025 🤝", use_container_width=True):
+                st.session_state["app_state"] = "CONVENIO"
+                st.rerun()
+
+    st.markdown("""
+        <div class="landing-footer">
+            <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:40px;">
+                <div style="flex:1; min-width:250px;">
+                    <div class="footer-title">🛡️ DITEL-MINSA</div>
+                    <p>Dirección de Telesalud, Referencia y Urgencias.<br>
+                    Trabajando para digitalizar la salud del Perú y<br>
+                    brindar atención de calidad a cada ciudadano.</p>
+                </div>
+                <div style="flex:1; min-width:200px;">
+                    <div class="footer-title">Recursos</div>
+                    <p>Normatividad<br>Guías Técnicas<br>Formatos DIC<br>Directorio Nacional</p>
+                </div>
+                <div style="flex:1; min-width:250px;">
+                    <div class="footer-title">Contacto</div>
+                    <p>📍 Av. Salaverry 801, Jesús María, Lima, Perú</p>
+                    <p>📞 (01) 315-6600</p>
+                    <p>✉️ soporte@minsa.gob.pe</p>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 # --- VISTA 2: DASHBOARD GENERAL ---
 def render_dashboard(df_filtered, srv_name):
@@ -387,25 +435,18 @@ def render_regional(df_filtered_global):
             cols_final = [c for c in cols_show if c in df_r.columns]
             st.dataframe(df_r[cols_final], use_container_width=True)
 
-# --- VISTA 4: PLAN 2025-2026 (ACTUALIZADA: Diseño y Orden) ---
+# --- VISTA 4: PLAN 2025-2026 ---
 def render_plan_2025(df_data):
-    # 1. TÍTULO ACTUALIZADO
     st.markdown("### 📋 PLAN PARA LA IMPLEMENTACIÓN DE LA TELEMAMOGRAFÍA EN ESTABLECIMIENTOS PRIORIZADOS, PERIODO 2025-2026")
     st.markdown("Monitorización específica de atenciones (Estado: Atendido | Servicio: Mamografía).")
     st.markdown("---")
 
-    # ==============================================================================
-    # FILTROS BASE GLOBALES PARA ESTA VISTA
-    # ==============================================================================
     mask_base = (
         (df_data['anio'].isin([2025, 2026])) &
         (df_data['tipo_servicio'] == 'MAMOGRAFIA') &
         (df_data['estado'].astype(str).str.upper().str.contains("ATENDIDO"))
     )
 
-    # ==============================================================================
-    # TABLA 1: E.S. CONSULTANTE (ORIGEN)
-    # ==============================================================================
     mapeo_consultante = {
         "CENTRO MATERNO INFANTIL RÍMAC": "CENTRO MATERNO INFANTIL RÍMAC",
         "HOSPITAL GENERAL DE HUACHO": "HOSPITAL GENERAL DE HUACHO",
@@ -438,35 +479,73 @@ def render_plan_2025(df_data):
         "NAC. DANIEL A. CARRION": "NAC. DANIEL A. CARRION"
     }
     
+    # === NUEVO MAPEO: E.S. -> DIRIS/DIRESA/GERESA (SEGÚN TU LISTA) ===
+    # Las llaves son los "Short Names" (Values del diccionario anterior)
+    diris_map = {
+        "CENTRO MATERNO INFANTIL RÍMAC": "LIMA NORTE",
+        "HOSPITAL GENERAL DE HUACHO": "LIMA REGIÓN",
+        "CENTRO MATERNO INFANTIL JOSE CARLOS MARIATEGUI": "LIMA SUR",
+        "C.S. MATERNO INFANTIL PACHACUTEC  PERU-COREA": "CALLAO",
+        "HOSPITAL AMAZONICO - YARINACOCHA": "UCAYALI",
+        "CENTRO MATERNO INFANTIL EL PROGRESO": "LIMA NORTE",
+        "SANTA ANITA": "LIMA ESTE",
+        "CENTRO DE SALUD MATERNO INFANTIL MAGDALENA": "LIMA CENTRO",
+        "QUILLABAMBA": "CUSCO",
+        "HOSPITAL REGIONAL DOCENTE CAJAMARCA": "CAJAMARCA",
+        "HOSPITAL HIPOLITO UNANUE DE TACNA": "TACNA",
+        "DE APOYO MANUEL HIGA ARAKAKI": "JUNIN",
+        "TUPAC AMARU": "CUSCO",
+        "HOSPITAL VICTOR RAMOS GUARDIA - HUARAZ": "LAMBAYEQUE",
+        "JOSE LEONARDO ORTIZ": "ANCASH",
+        "HOSPITAL DE VENTANILLA": "CALLAO",
+        "HOSPITAL DE APOYO DE POMABAMBA ANTONIO CALDAS DOMINGUEZ": "ANCASH",
+        "HOSPITAL DE EMERGENCIAS CHALHUANCA": "APURIMAC",
+        "HOSPITAL SANTA GEMA DE  YURIMAGUAS": "LORETO",
+        "HOSPITAL REGIONAL DOCENTE LAS MERCEDES": "TUMBES",
+        "HOSPITAL REGIONAL JOSE ALFREDO MENDOZA OLAVARRIA JAMO II-2": "LAMBAYEQUE",
+        "BANDA SHILCAYO": "SAN MARTIN",
+        "HOSP. ROMAN EGOAVIL PANDO VILLA RICA": "PASCO",
+        "HOSPITAL SAN JUAN DE MATUCANA": "LIMA REGIÓN",
+        "HOSPITAL DE APOYO SAN FRANCISCO": "AYACUCHO",
+        "HOSPITAL DEPARTAMENTAL DE HUANCAVELICA": "HUANCAVELICA",
+        "HOSPITAL REGIONAL DE LORETO FELIPE SANTIAGO ARRIOLA IGLESIAS": "LORETO",
+        "HOSPITAL SANTA ROSA": "MADRE DE DIOS",
+        "NAC. DANIEL A. CARRION": "CALLAO"
+    }
+
     nombres_bd_origen = list(mapeo_consultante.values())
     df_t1 = df_data[mask_base & df_data['nombre_eess_origen'].isin(nombres_bd_origen)].copy()
 
     st.subheader("Tabla 1: E.S. CONSULTANTE (ORIGEN)")
     if not df_t1.empty:
-        # 1. Agrupar
+        # Agrupamos
         t1_agrup = df_t1.groupby(['nombre_eess_origen', 'departamento']).size().reset_index(name='ATENCIONES')
         
-        # 2. Ordenar por Atenciones (Descendente)
-        t1_agrup = t1_agrup.sort_values('ATENCIONES', ascending=False)
+        # Mapeamos la DIRIS/DIRESA customizada
+        t1_agrup['DIRIS_CUSTOM'] = t1_agrup['nombre_eess_origen'].map(diris_map).fillna("-")
         
-        # 3. Resetear índice para que el orden sea 1, 2, 3... basado en el sort anterior
+        # Ordenamos
+        t1_agrup = t1_agrup.sort_values('ATENCIONES', ascending=False)
         t1_agrup.reset_index(drop=True, inplace=True)
         t1_agrup.index = t1_agrup.index + 1
         t1_agrup.reset_index(inplace=True)
-        t1_agrup.rename(columns={'index': 'N°'}, inplace=True)
-        t1_agrup.columns = ['N°', 'E.S. CONSULTANTE', 'DIRIS / DIRESA/GERESA', 'ATENCIONES']
+        t1_agrup.rename(columns={'index': 'N°', 'departamento': 'REGIÓN'}, inplace=True)
         
-        # 4. Fila Total (Sin número de orden para diseño limpio)
-        fila_total_1 = pd.DataFrame([['', 'TOTAL GENERAL', '', t1_agrup['ATENCIONES'].sum()]], columns=t1_agrup.columns)
-        t1_final = pd.concat([t1_agrup, fila_total_1], ignore_index=True)
+        # Seleccionamos y renombramos columnas finales
+        t1_final_display = t1_agrup[['N°', 'nombre_eess_origen', 'DIRIS_CUSTOM', 'REGIÓN', 'ATENCIONES']]
+        t1_final_display.columns = ['N°', 'E.S. CONSULTANTE', 'DIRIS / DIRESA/GERESA', 'REGIÓN', 'ATENCIONES']
+        
+        # Fila Total
+        fila_total_1 = pd.DataFrame([['', 'TOTAL GENERAL', '', '', t1_final_display['ATENCIONES'].sum()]], columns=t1_final_display.columns)
+        t1_final = pd.concat([t1_final_display, fila_total_1], ignore_index=True)
 
-        # 5. Visualización Mejorada
         st.dataframe(
             t1_final, 
             column_config={
                 "N°": st.column_config.TextColumn(width="small"),
                 "E.S. CONSULTANTE": st.column_config.TextColumn(width="large"),
                 "DIRIS / DIRESA/GERESA": st.column_config.TextColumn(width="medium"),
+                "REGIÓN": st.column_config.TextColumn(width="medium"),
                 "ATENCIONES": st.column_config.ProgressColumn(
                     "ATENCIONES", 
                     format="%d", 
@@ -482,9 +561,6 @@ def render_plan_2025(df_data):
 
     st.divider()
 
-    # ==============================================================================
-    # TABLA 2: E.S. CONSULTOR (DESTINO)
-    # ==============================================================================
     mapeo_consultor = {
         "INSTITUTO NACIONAL DE ENFERMEDADES NEOPLASICAS": "INSTITUTO NACIONAL DE ENFERMEDADES NEOPLASICAS",
         "MINSA MOVIL": "MINSA MOVIL",
@@ -504,24 +580,17 @@ def render_plan_2025(df_data):
     if col_destino in df_data.columns:
         df_t2 = df_data[mask_base & df_data[col_destino].isin(nombres_bd_destino)].copy()
         if not df_t2.empty:
-            # 1. Agrupar
             t2_agrup = df_t2.groupby([col_destino]).size().reset_index(name='ATENCIONES')
-            
-            # 2. Ordenar
             t2_agrup = t2_agrup.sort_values('ATENCIONES', ascending=False)
-            
-            # 3. Resetear índice para orden numérico correcto
             t2_agrup.reset_index(drop=True, inplace=True)
             t2_agrup.index = t2_agrup.index + 1
             t2_agrup.reset_index(inplace=True)
             t2_agrup.rename(columns={'index': 'N°'}, inplace=True)
             t2_agrup.columns = ['N°', 'E.S. CONSULTOR', 'ATENCIONES']
             
-            # 4. Fila Total
             fila_total_2 = pd.DataFrame([['', 'TOTAL GENERAL', t2_agrup['ATENCIONES'].sum()]], columns=t2_agrup.columns)
             t2_final = pd.concat([t2_agrup, fila_total_2], ignore_index=True)
             
-            # 5. Visualización
             st.dataframe(
                 t2_final,
                 column_config={
@@ -529,8 +598,8 @@ def render_plan_2025(df_data):
                     "E.S. CONSULTOR": st.column_config.TextColumn(width="large"),
                     "ATENCIONES": st.column_config.ProgressColumn(
                         "ATENCIONES", 
-                        format="%d",
-                        min_value=0,
+                        format="%d", 
+                        min_value=0, 
                         max_value=int(t2_agrup['ATENCIONES'].max())
                     )
                 },
@@ -544,11 +613,7 @@ def render_plan_2025(df_data):
 
     st.divider()
 
-    # ==============================================================================
-    # TABLA 3: CLASIFICACIÓN BIRADS
-    # ==============================================================================
     st.subheader("Tabla 3: CLASIFICACIÓN BIRADS")
-    
     df_t3 = df_data[mask_base].copy()
 
     if 'birads_raw' in df_t3.columns:
@@ -581,22 +646,98 @@ def render_plan_2025(df_data):
             use_container_width=False,
             hide_index=True
         )
-
     else:
         st.error("No se encontró la columna de BIRADS para generar la Tabla 3.")
 
+# --- VISTA 5: CONVENIO DE GESTIÓN (MAPA PINTADO & COLORIDO) ---
+def render_convenio():
+    st.markdown("### 🤝 Convenio de Gestión 2025")
+    st.markdown("Selecciona una región resaltada en el mapa para acceder al reporte detallado.")
+    
+    links_region = {
+        "JUNIN": "https://lookerstudio.google.com/reporting/2693ae3f-4b20-484a-9435-0a8fc527be6f",
+        "PASCO": "https://lookerstudio.google.com/reporting/82c7f660-0815-48b2-85f1-be3fd7dd5684",
+        "ICA": "https://lookerstudio.google.com/reporting/ce0133bb-4ace-4239-a678-462c9fd70bc6",
+        "AYACUCHO": "https://lookerstudio.google.com/reporting/c884d81c-63a8-4c6c-bfe4-ab4bef5b3428",
+        "APURIMAC": "https://lookerstudio.google.com/reporting/fd23f4a4-97e2-408f-b14f-c83a154ab808",
+        "HUANCAVELICA": "https://lookerstudio.google.com/reporting/5c324461-8586-4644-98c3-f82860a3a40b"
+    }
+
+    if geojson_peru:
+        # 1. Crear DataFrame con Categorías para el Color
+        regiones_activas = list(links_region.keys())
+        
+        map_rows = []
+        for feature in geojson_peru['features']:
+            dept_name = feature['properties']['NOMBDEP']
+            # Normalización rápida (por si acaso el geojson tiene APURÍMAC con tilde)
+            dept_key = str(dept_name).upper().replace("Í", "I") 
+            
+            if dept_key in regiones_activas:
+                # 🎨 TRUCO: Asignamos el NOMBRE de la región como categoría.
+                # Esto obliga a Plotly a asignar un color distinto a cada una automáticamente.
+                color_value = dept_name 
+            else:
+                # Las inactivas van todas al mismo grupo "OTROS"
+                color_value = "OTROS" 
+            
+            map_rows.append({"departamento": dept_name, "color_group": color_value})
+        
+        df_map_color = pd.DataFrame(map_rows)
+
+        # 2. Mapa con Lógica de Colores Mixta
+        fig_map = px.choropleth_mapbox(
+            df_map_color, 
+            geojson=geojson_peru, 
+            locations='departamento', 
+            featureidkey="properties.NOMBDEP",
+            color="color_group", # 🎨 Colorear según el grupo creado
+            color_discrete_map={
+                "OTROS": "#E2E8F0" # 🌫️ Forzamos GRIS solo para 'OTROS'
+                # Al no definir los otros, Plotly usa su paleta default (colores variados)
+            },
+            mapbox_style="carto-positron",
+            zoom=4.5, 
+            center={"lat": -9.19, "lon": -75.01}, 
+            opacity=0.8
+        )
+        fig_map.update_layout(margin={"r":0,"t":0,"l":0,"b":0}, height=600)
+        fig_map.update_traces(showlegend=False) # Ocultar leyenda para limpieza visual
+        
+        st.info("💡 Haz clic en cualquier región coloreada para ver su enlace.")
+        
+        evt = st.plotly_chart(fig_map, use_container_width=True, on_select="rerun")
+        
+        if evt and evt['selection']['points']:
+            selected_dept = evt['selection']['points'][0]['location']
+            dept_key = str(selected_dept).upper().replace("Í", "I")
+            
+            if dept_key in links_region:
+                url_destino = links_region[dept_key]
+                st.success(f"✅ Región seleccionada: **{selected_dept}**")
+                st.markdown(f"""
+                    <div style="text-align:center; margin: 20px 0;">
+                        <a href="{url_destino}" target="_blank" style="background-color:#2563EB; color:white; padding:12px 24px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:1.1rem;">
+                            Abrir Reporte de {selected_dept} 🚀
+                        </a>
+                    </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.warning(f"⚠️ La región **{selected_dept}** no tiene un reporte de convenio asignado todavía.")
 
 # --- MAIN ROUTER ---
 if st.session_state["app_state"] == "HOME":
     render_home()
 else:
-    # Sidebar
+    # Sidebar Inteligente (CORREGIDO: Ahora retorna siempre)
     df_filtrado, servicio_nombre = render_sidebar_filters(df_master)
     
-    # Router
+    # Router de Vistas
     if st.session_state["app_state"] == "DASHBOARD":
         render_dashboard(df_filtrado, servicio_nombre)
     elif st.session_state["app_state"] == "REGIONAL":
         render_regional(df_filtrado)
     elif st.session_state["app_state"] == "PLAN_2025":
         render_plan_2025(df_master)
+    elif st.session_state["app_state"] == "CONVENIO":
+        render_convenio()
