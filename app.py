@@ -407,8 +407,6 @@ def render_sidebar_filters(df_data):
                             df_f = df_f[df_f['nombre_mes'] == sel_mes]
                             
                 elif modo_fecha == "Por Calendario (Específico / Rango)":
-                    # Nota: en algunos despliegues (servidor), date.today() puede limitar el calendario.
-                    # Por eso, el máximo se toma de la data (si existe) y se asegura un tope >= 2026.
                     if not df_data.empty and 'fecha_solicitud' in df_data.columns:
                         min_dt = df_data['fecha_solicitud'].min().date()
                         max_dt_data = df_data['fecha_solicitud'].max().date()
@@ -428,7 +426,6 @@ def render_sidebar_filters(df_data):
                             max_value=max_dt,
                             format="DD/MM/YYYY"
                         )
-                        # Streamlit retorna (ini, fin)
                         if isinstance(val_rango, tuple) and len(val_rango) == 2:
                             fecha_ini, fecha_fin = val_rango
                             df_f = df_f[
@@ -454,8 +451,7 @@ def render_sidebar_filters(df_data):
                 return df_f, sel_srv
             
             return df_data, "MAMOGRAFIA"
-
-# --- VISTA 1: HOME ---
+        # --- VISTA 1: HOME ---
 def render_home():
     st.markdown("""
         <div style="display:flex; justify-content:space-between; align-items:center; padding: 10px 0;">
@@ -524,7 +520,6 @@ def render_dashboard(df_filtered, srv_name):
     col_L, col_R = st.columns([1.5, 1])
     with col_L:
         with st.container(border=True):
-            # 🛑 NUEVAS PESTAÑAS PARA EL MAPA (VOLUMEN VS BI-RADS 0) 🛑
             tab_map1, tab_map2 = st.tabs(["🗺️ Volumen General", "🚨 Alerta Riesgo Técnico (% BI-RADS 0)"])
             
             with tab_map1:
@@ -580,7 +575,6 @@ def render_dashboard(df_filtered, srv_name):
 
             with tab_rank2:
                 if 'departamento' in df_filtered.columns and 'birads_categoria' in df_filtered.columns:
-                # Calculamos concentración de B0 por departamento
                     dep_b0 = df_filtered.groupby('departamento').apply(
                     lambda x: (x['birads_categoria'].astype(str).str.contains('0 -').sum() / len(x)) * 100
                     ).reset_index(name='% B0')
@@ -589,7 +583,6 @@ def render_dashboard(df_filtered, srv_name):
                     st.plotly_chart(style_chart(fig_dep_b0), use_container_width=True, key="rank_dep_b0")
 
     with col_R:
-        # 🛑 PESTAÑAS CLÁSICAS + PESTAÑA BI-RADS REDISEÑADA 🛑
         tabs = st.tabs(["📈 Temporal", "👥 Demografía", "🩺 Clínico", "⚙️ Flujo", "🚨 Análisis BI-RADS 0"])
         
         with tabs[0]: 
@@ -654,12 +647,10 @@ def render_dashboard(df_filtered, srv_name):
                 tasa_b0 = (total_b0 / total_casos) * 100
                 t_prom_0 = df_b0['tiempo_atencion_dias'].mean() if 'tiempo_atencion_dias' in df_b0.columns else 0
                 
-                # Alerta dinámica ejecutiva
                 if tasa_b0 > 10: st.error(f"🚨 **Riesgo Técnico Detectado:** La tasa nacional de exámenes incompletos es **{tasa_b0:.1f}%**. Revisar el top de establecimientos críticos.")
                 elif tasa_b0 > 5: st.warning(f"⚠️ **Atención:** Tasa BI-RADS 0 en **{tasa_b0:.1f}%**. Nivel moderado de rechazos técnicos.")
                 else: st.success(f"✅ **Óptimo:** Tasa BI-RADS 0 controlada (**{tasa_b0:.1f}%**).")
 
-                # Layout de 3 columnas (Más limpio)
                 c1_b, c2_b, c3_b = st.columns(3)
                 with c1_b: st.metric("Volumen Total", f"{total_b0} casos")
                 with c2_b: st.metric("Tasa Nacional", f"{tasa_b0:.1f}%")
@@ -672,7 +663,7 @@ def render_dashboard(df_filtered, srv_name):
                         ipr_b = df_filtered.groupby('nombre_eess_origen').agg(
                             Total=('estado', 'count'), B0=(birads_col, lambda x: x.astype(str).str.contains('0 -').sum())
                         ).reset_index()
-                        ipr_b = ipr_b[ipr_b['Total'] > 10] # Filtro de solidez (mínimo 10 casos)
+                        ipr_b = ipr_b[ipr_b['Total'] > 10] 
                         ipr_b['% B0'] = (ipr_b['B0'] / ipr_b['Total']) * 100
                         top_b0 = ipr_b.sort_values('% B0', ascending=False).head(10)
                         
