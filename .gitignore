@@ -1,3 +1,4 @@
 .env
-~$*.xlsx
+*.xlsx
 __pycache__/
+temp_uploads/
