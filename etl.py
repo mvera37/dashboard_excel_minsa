@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import os
 
 # --- CONFIGURACIÓN ---
-EXCEL_MAIN =  r"D:\MINSA\Proyecto Mónica\Analisis - copia\Reporte_SIA_TELEATIENDO_04022026.xlsx"
+EXCEL_MAIN =  r"D:\MINSA\Proyecto Mónica\Analisis - copia\Reporte_SIA_TELEATIENDO_24022026.xlsx"
 EXCEL_EESS = "EESS.xlsx"
 TABLE_DESTINO = "vista_master_dashboard"
 
@@ -130,6 +130,14 @@ def procesar_principal(maestros):
                 print(f"   ⚠️ CORRIGIENDO: Se movieron {count_q} registros de 'QUILLABAMBA' a CUSCO.")
                 df.loc[mask_quilla, 'departamento'] = 'CUSCO'
                 df.loc[mask_quilla, 'provincia'] = 'LA CONVENCION' # Asignamos también su provincia correcta
+            
+            # 🔥 2. FIX TUPAC AMARU -> ANCASH (NUEVO)
+                mask_tupac = df['nombre_eess_origen'].astype(str).str.upper().str.contains("TUPAC AMARU", na=False)
+                if mask_tupac.any():
+                    print(f"   ⚠️ Corrección Tupac Amaru aplicada (ICA -> CUSCO).")
+                    df.loc[mask_tupac, 'departamento'] = 'CUSCO'
+                    # Opcional: Si sabes la provincia exacta, puedes ponerla aquí también
+            
             # ------------------------------------------------
         
         # === B. IDENTIFICAR Y RENOMBRAR DESTINO (TU CORRECCIÓN) ===
